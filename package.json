@@ -1,47 +1,21 @@
 {
   "name": "dsh-home-control",
-  "version": "1.1.1",
-  "description": "Software-only unified smart home hub for DeepSeek Harness — MiHome, Bemfa, Gree LAN, HA, WoL, with Mode Engine dashboard.",
+  "version": "2.0.0",
   "type": "module",
   "main": "index.js",
+  "description": "Industrial-grade Smart Home OS for DSH with Approval Gate.",
   "exports": {
     ".": "./index.js",
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "keywords": [
     "dsh-plugin",
-    "dsh",
     "smart-home",
-    "mihome",
-    "xiaomi",
-    "bemfa",
-    "gree",
-    "home-assistant",
-    "iot"
+    "jarvis",
+    "approval-gate"
   ],
   "author": "cshaur",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/cshaur/dsh-home-control.git"
-  },
-  "bugs": {
-    "url": "https://github.com/cshaur/dsh-home-control/issues"
-  },
-  "homepage": "https://github.com/cshaur/dsh-home-control#readme",
-  "engines": {
-    "node": ">=22"
-  },
-  "files": [
-    "index.js",
-    "cordis.patch.yml",
-    "README.md",
-    "README.zh.md",
-    "LICENSE.txt",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md"
-  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

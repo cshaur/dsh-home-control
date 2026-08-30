@@ -1,6 +1,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
+import dgram from 'node:dgram'
+import crypto from 'node:crypto'
 
 console.error('[JARVIS] Core Engine Initializing...')
 
@@ -48,9 +50,58 @@ async function dashboard(cfg) {
   return md
 }
 
+function ssdp(t = 4000) {
+  return new Promise((res) => {
+    const s = dgram.createSocket('udp4'); const found = new Map()
+    const done = () => { try { s.close() } catch {} res([...found.values()]) }
+    const timer = setTimeout(done, t)
+    s.on('error', () => { clearTimeout(timer); done() })
+    s.on('message', (m, r) => { try {
+      const txt = m.toString()
+      const st = (txt.match(/ST:\s*(.+)/i) || [])[1] || 'unknown'
+      const sv = (txt.match(/SERVER:\s*(.+)/i) || [])[1] || ''
+      if (!found.has(r.address)) found.set(r.address, { ip: r.address, type: st.split(':').pop().trim(), server: sv.trim() })
+    } catch {} })
+    s.bind(0, () => { try {
+      s.send(Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 3\r\nST: ssdp:all\r\n\r\n'), 1900, '239.255.255.250')
+    } catch {} })
+  })
+}
+
+const GREE_KEY = 'a3K8Bx%2r8Y7#3h%'
+function gree(t = 2500) {
+  const dec = (data) => { const c = crypto.createDecipheriv('aes-128-ecb', Buffer.from(GREE_KEY), null); return Buffer.concat([c.update(data), c.final()]) }
+  return new Promise((res) => {
+    const s = dgram.createSocket('udp4'); const found = []
+    const timer = setTimeout(() => { try { s.close() } catch {} res(found) }, t)
+    s.on('error', () => { clearTimeout(timer); try { s.close() } catch {} res(found) })
+    s.on('message', (m) => { try {
+      const j = JSON.parse(m.toString())
+      if (j.t === 'pack' && j.pack) found.push({ ip: JSON.parse(dec(Buffer.from(j.pack, 'base64')).toString()).ip })
+    } catch {} })
+    s.bind(0, () => { try { s.setBroadcast(true); s.send(Buffer.from(JSON.stringify({ t: 'scan' })), 7000, '255.255.255.255') } catch {} })
+  })
+}
+
 export function apply(ctx) {
   console.error('[JARVIS] Registering tools...')
   const reg = (t) => { for (const f of [() => ctx.tools.register(t), () => ctx.registerTool(t), () => ctx.get('tools').register(t)]) { try { return f() } catch (e) {} } }
+
+  reg(defineTool({
+    name: 'home_discover',
+    description: 'Multi-protocol LAN radar: SSDP/UPnP (TVs, speakers) + Gree (AC).',
+    parameters: {},
+    output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
+    async execute() {
+      const [u, g] = await Promise.all([ssdp(), gree()])
+      let md = '📡 JARVIS LAN Radar\n\n### UPnP/SSDP\n'
+      md += u.length ? '| IP | Type | Server |\n|---|---|---|\n' + u.map(d => `| ${d.ip} | ${d.type} | ${d.server} |\n`).join('') : '(none)\n'
+      md += '\n### Gree AC\n'
+      md += g.length ? g.map(x => `- ${x.ip}\n`).join('') : '(none)\n'
+      md += '\n💡 Bind any device with home_bind (name + on_url + off_url).'
+      return md
+    }
+  }))
 
   reg(defineTool({
     name: 'home_dashboard',
@@ -87,7 +138,7 @@ export function apply(ctx) {
     }
   }))
 
-  reg(defineTool({
+    reg(defineTool({
     name: 'home_mode',
     description: 'list | set | apply modes (Sleep/Comfort/Away/Romantic or custom).',
     parameters: { action: { type: 'string', required: true }, mode: { type: 'string' }, device: { type: 'string' }, state: { type: 'string' } },
@@ -97,7 +148,7 @@ export function apply(ctx) {
       const modes = cfg.modes || (cfg.modes = {})
       if (a.action === 'list') {
         const all = { ...DEFAULT_MODES, ...modes }
-        return Object.entries(all).map(([n, l]) => `${icon(n)} ${n}: ${l.length ? l.map(x => x.device).join(', ') : '(empty)'}`).join('\n')
+        return Object.entries(all).map(([n, l]) => `${icon(n)} ${n}: ` + (l.length ? l.map(x => x.device).join(', ') : '(empty)')).join('\n')
       }
       if (a.action === 'set') {
         if (!a.mode || !a.device) return '⚠️ need mode + device'
@@ -114,7 +165,7 @@ export function apply(ctx) {
           const dev = cfg.devices.find(d => d.name === s.device)
           rs.push(dev ? '  ' + await fire(dev, s.state === 'off' ? 'off' : 'on') : `  ⚠️ missing ${s.device}`)
         }
-        return `🎛️ Mode "${a.mode}" executed:\n${rs.join('\n')}`
+        return `🎛️ Mode "${a.mode}" executed:\n` + rs.join('\n')
       }
       return '⚠️ unknown action'
     }

@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import dgram from 'node:dgram'
+import crypto from 'node:crypto'
 
 console.error('[JARVIS] Core Engine Initializing...')
 
@@ -13,18 +14,13 @@ export const inject = ['tools']
 
 const CONFIG_PATH = join(homedir(), '.dsh', 'jarvis-config.json')
 
-// Bulletproof: English + Emoji only to prevent Windows ANSI encoding crashes
 const DEFAULT_MODES = { 'Sleep': [], 'Comfort': [], 'Away': [], 'Romantic': [] }
 const MODE_ICONS = { 'Sleep': '🌙', 'Comfort': '🛋️', 'Away': '🏯', 'Romantic': '💕' }
 const modeIcon = (n) => MODE_ICONS[n] || '⚙️'
 
 async function loadConfig() {
-  try {
-    const cfg = JSON.parse(await readFile(CONFIG_PATH, 'utf8'))
-    return cfg
-  } catch (e) { 
-    return { devices: [], modes: {}, customDrivers: {}, error: e.message } 
-  }
+  try { return JSON.parse(await readFile(CONFIG_PATH, 'utf8')) }
+  catch (e) { return { devices: [], modes: {}, error: e.message } }
 }
 
 async function saveConfig(cfg) {
@@ -32,39 +28,49 @@ async function saveConfig(cfg) {
   await writeFile(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8')
 }
 
-// Universal HTTP Bridge: Control ANY WiFi device with an HTTP endpoint
 async function universalControl(dev, action) {
-  const urlTemplate = dev.urls?.[action]
-  if (!urlTemplate) return `⚠️ No URL defined for action: ${action}`
-  
+  const url = dev.urls?.[action]
+  if (!url) return `⚠️ No URL for action: ${action}`
   try {
-    const r = await fetch(urlTemplate, { 
-      method: dev.method || 'GET',
-      signal: AbortSignal.timeout(5000)
-    })
+    const r = await fetch(url, { method: dev.method || 'GET', signal: AbortSignal.timeout(5000) })
     return `${r.ok ? '✅' : '⚠️'} [HTTP] ${dev.name} ${action} -> ${r.status}`
-  } catch (e) {
-    return `⚠️ [HTTP] Failed to reach ${dev.name}: ${e.message}`
-  }
+  } catch (e) { return `⚠️ [HTTP] Cannot reach ${dev.name}: ${e.message}` }
 }
 
-// LAN Radar: Discover WiFi devices via UDP Broadcast (SSDP/Custom)
-async function scanLAN(timeout = 3000) {
+async function ssdpDiscover(t = 4000) {
   return new Promise((res) => {
     const s = dgram.createSocket('udp4')
-    const found = []
-    const timer = setTimeout(() => { try { s.close() } catch {} res(found) }, timeout)
+    const found = new Map()
+    const done = () => { try { s.close() } catch {} res([...found.values()]) }
+    const timer = setTimeout(done, t)
+    s.on('error', () => { clearTimeout(timer); done() })
+    s.on('message', (m, rinfo) => { try {
+      const txt = m.toString()
+      const st = (txt.match(/ST:\s*(.+)/i) || [])[1] || 'unknown'
+      const srv = (txt.match(/SERVER:\s*(.+)/i) || [])[1] || ''
+      if (!found.has(rinfo.address)) found.set(rinfo.address, { ip: rinfo.address, type: st.split(':').pop().trim(), server: srv.trim() })
+    } catch {} })
+    s.bind(0, () => { try {
+      s.send(Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 3\r\nST: ssdp:all\r\n\r\n'), 1900, '239.255.255.250')
+    } catch {} })
+  })
+}
+
+const GREE_KEY = 'a3K8Bx%2r8Y7#3h%'
+const ecb = (mode, key, data) => {
+  const c = mode === 'enc' ? crypto.createCipheriv('aes-128-ecb', Buffer.from(key), null) : crypto.createDecipheriv('aes-128-ecb', Buffer.from(key), null)
+  return Buffer.concat([c.update(data), c.final()])
+}
+async function greeScan(t = 2500) {
+  return new Promise((res) => {
+    const s = dgram.createSocket('udp4'); const found = []
+    const timer = setTimeout(() => { try { s.close() } catch {} res(found) }, t)
     s.on('error', () => { clearTimeout(timer); try { s.close() } catch {} res(found) })
-    s.on('message', (m, rinfo) => { 
-      found.push({ ip: rinfo.address, port: rinfo.port, payload: m.toString() }) 
-    })
-    s.bind(0, () => { 
-      try {
-        s.setBroadcast(true)
-        // Send a generic discovery packet to common IoT ports
-        s.send(Buffer.from('DISCOVER_JARVIS'), 8080, '255.255.255.255') 
-      } catch {} 
-    })
+    s.on('message', (m) => { try {
+      const j = JSON.parse(m.toString())
+      if (j.t === 'pack' && j.pack) { const d = JSON.parse(ecb('dec', GREE_KEY, Buffer.from(j.pack, 'base64')).toString()); found.push({ ip: d.ip }) }
+    } catch {} })
+    s.bind(0, () => { try { s.setBroadcast(true); s.send(Buffer.from(JSON.stringify({ t: 'scan' })), 7000, '255.255.255.255') } catch {} })
   })
 }
 
@@ -78,91 +84,33 @@ function formatSetting(s) {
 async function applyMode(cfg, name) {
   const modes = { ...DEFAULT_MODES, ...(cfg.modes || {}) }
   const settings = modes[name]
-  if (!settings || !settings.length) return `⚠️ Mode "${name}" is empty. Use home_mode set to add devices.`
-  
+  if (!settings || !settings.length) return `⚠️ Mode "${name}" is empty. Use home_mode set first.`
   const rs = []
   for (const s of settings) {
     const dev = cfg.devices.find(d => d.name === s.device)
     if (!dev) { rs.push(`  ⚠️ Device not found: ${s.device}`); continue }
-    const r = await universalControl(dev, s.state)
-    rs.push('  ' + r)
+    rs.push('  ' + await universalControl(dev, s.state))
   }
-  return `🎛️ Mode "${name}" Executed:\n${rs.join('\n')}`
+  return `🎛️ Mode "${name}" executed:\n${rs.join('\n')}`
 }
 
 export function apply(ctx) {
   console.error('[JARVIS] Tools Registering...')
   const reg = (tool) => {
-    const tries = [
-      () => ctx.tools.register(tool),
-      () => ctx.registerTool(tool),
-      () => ctx.get('tools').register(tool)
-    ]
+    const tries = [() => ctx.tools.register(tool), () => ctx.registerTool(tool), () => ctx.get('tools').register(tool)]
     for (const f of tries) { try { return f() } catch (e) {} }
   }
 
   reg(defineTool({
     name: 'home_discover',
-    description: 'Scan local WiFi network for smart devices (LAN Radar).',
+    description: 'Multi-protocol LAN radar: SSDP/UPnP (TVs, speakers) + Gree (AC). Lists discovered WiFi devices.',
     parameters: {},
     output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
     async execute() {
-      const devices = await scanLAN()
-      if (!devices.length) return '📡 No devices responded to LAN broadcast. Ensure devices are on the same WiFi.'
-      return `📡 Discovered ${devices.length} WiFi endpoints:\n` + devices.map(d => `- IP: ${d.ip} | Port: ${d.port}`).join('\n')
-    }
-  }))
-
-  reg(defineTool({
-    name: 'home_bind',
-    description: 'Bind a WiFi device to JARVIS using its HTTP API URL. (name: string, ip: string, on_url: string, off_url: string)',
-    parameters: { 
-      name: { type: 'string', required: true }, 
-      ip: { type: 'string', required: true },
-      on_url: { type: 'string', required: true },
-      off_url: { type: 'string', required: true }
-    },
-    output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
-    async execute(args) {
-      const cfg = await loadConfig()
-      const newDev = { 
-        name: args.name, 
-        ip: args.ip, 
-        driver: 'universal_http',
-        urls: { on: args.on_url, off: args.off_url } 
-      }
-      cfg.devices = cfg.devices || []
-      cfg.devices.push(newDev)
-      await saveConfig(cfg)
-      return `✅ Bound "${args.name}" (${args.ip}) to JARVIS successfully!`
-    }
-  }))
-
-  reg(defineTool({
-    name: 'home_mode',
-    description: 'Manage & Execute JARVIS Modes (Sleep/Comfort/Away/Romantic). action: list|apply|set',
-    parameters: {
-      action: { type: 'string', required: true },
-      mode: { type: 'string' }, device: { type: 'string' }, state: { type: 'string' }
-    },
-    output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
-    async execute(args) {
-      const cfg = await loadConfig()
-      const modes = cfg.modes || (cfg.modes = {})
-      if (args.action === 'list') {
-        const all = { ...DEFAULT_MODES, ...modes }
-        return Object.entries(all).map(([n, l]) => 
-          `${modeIcon(n)} ${n}: ${l.length ? l.map(x => x.device).join(', ') : '(Empty)'}`
-        ).join('\n')
-      }
-      if (args.action === 'apply') return await applyMode(cfg, args.mode)
-      if (args.action === 'set') {
-        if (!args.mode || !args.device) return '⚠️ Need mode and device'
-        const list = modes[args.mode] || (modes[args.mode] = [])
-        list.push({ device: args.device, state: args.state || 'on' })
-        await saveConfig(cfg)
-        return `✅ Added ${args.device} to mode ${args.mode}`
-      }
-    }
-  }))
-}
+      const [ssdp, gree] = await Promise.all([ssdpDiscover(), greeScan()])
+      let md = '📡 JARVIS LAN Radar Report\n\n### UPnP/SSDP devices\n'
+      if (!ssdp.length) md += '(none responded)\n'
+      else md += '| IP | Type | Server |\n|---|---|---|\n' + ssdp.map(d => `| ${d.ip} | ${d.type} | ${d.server} |\n`).join('')
+      md += '\n### Gree AC units\n'
+      if (!gree.length) md += '(none responded)\n'
+      else md += gree.map(g => `-

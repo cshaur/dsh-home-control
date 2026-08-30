@@ -1,15 +1,50 @@
 {
   "name": "dsh-home-control",
-  "version": "1.1.0",
-  "description": "Software-only unified smart home hub for DSH â€” MiHome, Bemfa, Gree LAN, HA, WoL, with Mode Engine dashboard.",
+  "version": "1.1.1",
+  "description": "Software-only unified smart home hub for DeepSeek Harness — MiHome, Bemfa, Gree LAN, HA, WoL, with Mode Engine dashboard.",
   "type": "module",
   "main": "index.js",
-  "exports": { ".": "./index.js", "./cordis.patch.yml": "./cordis.patch.yml" },
-  "keywords": ["dsh-plugin","smart-home","mihome","xiaomi","bemfa","gree","home-assistant","iot"],
+  "exports": {
+    ".": "./index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "smart-home",
+    "mihome",
+    "xiaomi",
+    "bemfa",
+    "gree",
+    "home-assistant",
+    "iot"
+  ],
   "author": "cshaur",
   "license": "MIT",
-  "repository": "github:cshaur/dsh-home-control",
-  "engines": { "node": ">=22" },
-  "files": ["index.js","cordis.patch.yml","README.md","README.zh.md"],
-  "dsh": { "bundle": { "patch": "cordis.patch.yml", "client": false } }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cshaur/dsh-home-control.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cshaur/dsh-home-control/issues"
+  },
+  "homepage": "https://github.com/cshaur/dsh-home-control#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE.txt",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
 }

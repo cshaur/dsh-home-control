@@ -1,2 +1,3 @@
-- id: home-control
-  name: dsh-home-control
+- insert:
+    - id: home-control
+      name: dsh-home-control

@@ -1,24 +1,14 @@
 {
   "name": "dsh-home-control",
-  "version": "2.0.0",
+  "version": "3.0.0",
+  "description": "Industrial Smart Home OS for DSH: approval gate, event memory, credential seam, self-healing config.",
   "type": "module",
   "main": "index.js",
-  "description": "Industrial-grade Smart Home OS for DSH with Approval Gate.",
-  "exports": {
-    ".": "./index.js",
-    "./cordis.patch.yml": "./cordis.patch.yml"
-  },
-  "keywords": [
-    "dsh-plugin",
-    "smart-home",
-    "jarvis",
-    "approval-gate"
-  ],
+  "exports": { ".": "./index.js", "./cordis.patch.yml": "./cordis.patch.yml" },
+  "keywords": ["dsh-plugin", "smart-home", "jarvis", "approval-gate", "iot"],
   "author": "cshaur",
   "license": "MIT",
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  }
+  "engines": { "node": ">=22" },
+  "files": ["index.js", "demo-plug.js", "cordis.patch.yml", "README.md", "README.zh.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 }

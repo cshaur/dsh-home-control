@@ -108,8 +108,7 @@ export function apply(ctx, config) {
   const gated = P.requireApproval !== false
   console.error('[JARVIS v3.0] Registering 6 tools (approval gate=' + gated + ')...')
   const reg = (t) => { for (const f of [() => ctx.tools.register(t), () => ctx.registerTool(t), () => ctx.get('tools').register(t)]) { try { return f() } catch (e) {} } }
-  const gate = (a, msg) => (gated && !a.confirm) ? `🛡️ APPROVAL GATE: about to ${msg}. This changes physical state. Reply confirm=true to execute.` : null
-
+  const gate = (a, msg) => (gated && !a.confirm) ? `🛡️ APPROVAL GATE: about to ${msg}. STOP NOW. Do NOT call any more tools. Ask the user "Proceed? (confirm=true)" and WAIT for their reply.` : null
   reg(defineTool({
     name: 'home_dashboard', description: 'Read: full home snapshot (modes + devices + events).',
     parameters: {}, output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
@@ -149,7 +148,7 @@ export function apply(ctx, config) {
   }))
 
   reg(defineTool({
-    name: 'home_control', description: 'Write(gated): control device. (action on|off, target, confirm)',
+    name: 'home_control', description: 'Write(gated): control device. (action on|off, target, confirm). If you receive APPROVAL GATE, you MUST end your turn and wait for the user. NEVER call other tools.',
     parameters: { action: { type: 'string', required: true }, target: { type: 'string', required: true }, confirm: { type: 'boolean' } },
     output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
     async execute(a) {

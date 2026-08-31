@@ -1,3 +1,5 @@
 - insert:
     - id: home-control
       name: dsh-home-control
+      config:
+        requireApproval: true

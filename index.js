@@ -106,9 +106,21 @@ function gree(t = 2500) {
 export function apply(ctx, config) {
   const P = config || {}
   const gated = P.requireApproval !== false
-  console.error('[JARVIS v3.0] Registering 6 tools (approval gate=' + gated + ')...')
+  let hardArmed = false
+  const SENSITIVE = new Set(['home_control', 'home_bind'])
+  try {
+    ctx.on('tools/pre-execute', async (exec, next) => {
+      const n = exec.name || ''
+      if (!n.startsWith('home_')) return next()
+      if (SENSITIVE.has(n) || (n === 'home_mode' && (exec.arguments || {}).action === 'apply'))
+        return { kind: 'ask', reason: 'JARVIS: "' + n + '" changes physical device state - approve to continue.' }
+      return next()
+    })
+    hardArmed = true
+  } catch (e) { console.error('[JARVIS v3.1] hard gate unavailable:', e.message) }
+  console.error('[JARVIS v3.1] Registering 6 tools (hard gate=' + hardArmed + ')...')
   const reg = (t) => { for (const f of [() => ctx.tools.register(t), () => ctx.registerTool(t), () => ctx.get('tools').register(t)]) { try { return f() } catch (e) {} } }
-  const gate = (a, msg) => (gated && !a.confirm) ? `🛡️ APPROVAL GATE: about to ${msg}. STOP NOW. Do NOT call any more tools. Ask the user "Proceed? (confirm=true)" and WAIT for their reply.` : null
+  const gate = (a, msg) => (!hardArmed && gated && !a.confirm) ? `🛡️ APPROVAL GATE: about to ${msg}. Reply confirm=true.` : null
   reg(defineTool({
     name: 'home_dashboard', description: 'Read: full home snapshot (modes + devices + events).',
     parameters: {}, output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
